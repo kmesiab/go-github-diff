@@ -3,6 +3,7 @@
 ![Golang](https://img.shields.io/badge/Go-00add8.svg?labelColor=171e21&style=for-the-badge&logo=go)
 
 ![Build](https://github.com/kmesiab/go-github-diff/actions/workflows/go.yml/badge.svg)
+[![Go Report Card](https://goreportcard.com/badge/github.com/kmesiab/go-github-diff)](https://goreportcard.com/report/github.com/kmesiab/go-github-diff)
 
 This Go library provides a set of functions to interact with GitHub Pull
 Requests, specifically for parsing and processing the contents of Git

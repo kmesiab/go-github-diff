@@ -17,6 +17,8 @@ diffs associated with pull requests.
 - Filter out file diffs based on a list of ignored file extensions.
 - Comprehensive regex-based file path matching for filtering file diffs.
 - Robust and extensive unit testing to ensure reliability and functionality.
+- Dependency injection support for GitHub API client, allowing for easier
+testing and flexibility.
 
 ## Installation
 
@@ -42,18 +44,22 @@ if err != nil {
 // Use prURL.Owner, prURL.Repo, and prURL.PRNumber
 ```
 
-### GetPullRequest
+### GetPullRequestWithClient
 
 ```go
-prURL := &github.PullRequestURL{
-    Owner: "username",
-    Repo: "repository",
-    PRNumber: 123,
-}
-diff, err := github.GetPullRequest(context.Background(), prURL)
+// Create a new github client 
+// (You can pass a HTTP Client, instead of nil)
+client := github.NewClient(nil)
+
+// Create a new GitHubClientWrapper using the github client
+ghClient := ghdiff.GitHubClientWrapper{Client: client}
+
+// Process the pull request using the new function
+prString, err := ghdiff.GetPullRequestWithClient(context.TODO(), prURL, &ghClient)
 
 if err != nil {
-    // Handle error
+    fmt.Printf("Error getting pull request: %s\n", err)
+    return
 }
 
 // Use diff as a string containing the Git diff

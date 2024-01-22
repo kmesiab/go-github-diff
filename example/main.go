@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/go-github/v57/github"
 
-	ghdiff "github.com/kmesiab/go-github-diff"
+	ghdiff "github.com/kmesiab/go-github-diff" // Ensure this import path is correct
 )
 
 func main() {
@@ -15,13 +15,18 @@ func main() {
 		"https://github.com/kmesiab/ai-code-critic/pull/50",
 	)
 
-	// Create a new github client
+	// Create a new github client (You can pass a mock HTTP Client, instead of nil)
 	client := github.NewClient(nil)
 
-	// Process the pull request
-	prString, err := ghdiff.GetPullRequest(context.TODO(), prURL, client)
+	// Create a new GitHubClientWrapper using the github client
+	ghClient := ghdiff.GitHubClientWrapper{Client: client}
+
+	// Process the pull request using the new function
+	prString, err := ghdiff.GetPullRequestWithClient(context.TODO(), prURL, &ghClient)
 	if err != nil {
 		fmt.Printf("Error getting pull request: %s\n", err)
+
+		return
 	}
 
 	// Print the raw diff string
@@ -43,6 +48,5 @@ func main() {
 			diffFile.Index,
 			diffFile.DiffContents,
 		)
-
 	}
 }

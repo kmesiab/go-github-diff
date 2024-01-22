@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"path/filepath"
 	"regexp"
@@ -91,6 +92,9 @@ func ParsePullRequestURL(pullRequestURL string) (*PullRequestURL, error) {
 	}, nil
 }
 
+// Deprecated: Use GetPullRequestWithClient or GetPullRequestFromGithub instead.
+// GetPullRequest will be removed in a future version.
+//
 // GetPullRequest retrieves the contents of a pull request's Git diff from GitHub.
 // The function takes a context and a PullRequestURL struct, which contains the
 // information needed to identify the specific pull request. It uses the GitHub API
@@ -132,6 +136,126 @@ func GetPullRequest(ctx context.Context, pr *PullRequestURL, client *github.Clie
 	}
 
 	return getDiffContents(pullRequest.GetDiffURL())
+}
+
+// GetPullRequestWithClient retrieves the contents of a pull request's Git diff from GitHub using an injected client.
+// This function is similar to GetPullRequest, but it allows for dependency injection of a GitHubClientInterface,
+// making it more flexible and easier to test.
+//
+// Parameters:
+//   - ctx: A context.Context object, which is used for managing the lifecycle of the request,
+//     such as canceling it or setting a timeout.
+//   - pr: A pointer to a PullRequestURL struct, containing the owner, repository, and pull request number.
+//     This struct identifies the specific pull request for which the diff is to be retrieved.
+//   - client: An implementation of the GitHubClientInterface. This interface abstraction allows
+//     for injecting different implementations, such as a real GitHub client or a mock client for testing.
+//
+// Returns:
+//   - A string containing the raw contents of the Git diff for the specified pull request.
+//   - An error if there is a failure in retrieving the pull request or in obtaining the diff contents.
+//
+// The function uses the provided client to fetch the pull request specified by the PullRequestURL struct.
+// If the pull request is successfully retrieved, it extracts the URL of the pull request's diff and
+// calls getDiffContents to fetch the actual diff data. This approach allows for better testability and
+// flexibility, as different client implementations can be used depending on the context (e.g., testing,
+// production).
+//
+// Example:
+//
+//	prURL := &PullRequestURL{Owner: "username", Repo: "repository", PRNumber: 123}
+//	diff, err := GetPullRequestWithClient(context.Background(), prURL, injectedClient)
+//	if err != nil {
+//	  // Handle error
+//	}
+//	// Use diff as a string containing the Git diff
+//
+// This function is particularly useful in scenarios where dependency injection is preferred for
+// better control and testing, such as in automated code review tools, continuous integration systems,
+// or other applications that interact with GitHub pull requests programmatically.
+func GetPullRequestWithClient(ctx context.Context, pr *PullRequestURL, client GitHubClientInterface) (string, error) {
+	pullRequest, _, err := client.Get(ctx, pr.Owner, pr.Repo, pr.PRNumber)
+	if err != nil {
+		return "", err
+	}
+
+	return getDiffContents(pullRequest.GetDiffURL())
+}
+
+// GetPullRequestFromGithub retrieves the contents of a pull request's Git diff from GitHub using the default client.
+// This function simplifies the process of fetching a pull request diff by using the standard GitHub client,
+// which is created within the function. It's suitable for scenarios where dependency injection is not required
+// and the default client configuration is appropriate.
+//
+// Parameters:
+//   - ctx: A context.Context object, used for managing the lifecycle of the request,
+//     including cancellation and timeouts.
+//   - pr: A pointer to a PullRequestURL struct, specifying the owner, repository, and pull request number.
+//     This struct is used to identify the specific pull request whose diff is to be retrieved.
+//
+// Returns:
+//   - A string containing the raw contents of the Git diff for the specified pull request.
+//   - An error if there is a problem retrieving the pull request or obtaining the diff contents.
+//
+// The function creates a new instance of the default GitHub client and uses it to fetch the specified pull request.
+// After successfully retrieving the pull request, it extracts the URL of the pull request's diff and
+// utilizes getDiffContents to obtain the actual diff data.
+//
+// Example:
+//
+//	prURL := &PullRequestURL{Owner: "username", Repo: "repository", PRNumber: 123}
+//	diff, err := GetPullRequestFromGithub(context.Background(), prURL)
+//	if err != nil {
+//	  // Handle error
+//	}
+//	// Use diff as a string containing the Git diff
+//
+// This function is ideal for use cases where a simple, straightforward approach to interacting with GitHub pull
+// requests is needed, without the requirement for advanced configuration or dependency injection.
+func GetPullRequestFromGithub(ctx context.Context, pr *PullRequestURL) (string, error) {
+	client := github.NewClient(nil)
+
+	return GetPullRequestWithClient(ctx, pr, &GitHubClientWrapper{Client: client})
+}
+
+// GetPullRequestWithDetails retrieves detailed information about a specific pull request from GitHub.
+// This function is useful for applications that require more than just the diff content of a pull request,
+// such as the pull request's metadata, comments, review status, and more.
+//
+// Parameters:
+//   - ctx: A context.Context object, which is used to control the request's execution. It allows for
+//     things like canceling the request or setting a deadline.
+//   - pr: A pointer to a PullRequestURL struct, containing the owner, repository, and pull request number.
+//     This struct is used to identify the specific pull request from which to fetch details.
+//   - client: A *github.Client object, which is the GitHub API client used to make requests to the GitHub API.
+//
+// Returns:
+//   - A pointer to a github.PullRequest struct, which contains detailed information about the pull request.
+//   - An error if there is an issue fetching the pull request or if the GitHub API returns an error.
+//
+// The function makes a call to the GitHub API's PullRequests.Get method using the provided GitHub client,
+// owner, repo, and pull request number. It then returns the resulting github.PullRequest struct, which includes
+// comprehensive details about the pull request, or an error if the request fails.
+//
+// Example:
+//
+//	prDetails, err := GetPullRequestWithDetails(context.Background(), prURL, githubClient)
+//	if err != nil {
+//	  // Handle error
+//	}
+//	// Use prDetails to access detailed information about the pull request
+func GetPullRequestWithDetails(
+	ctx context.Context,
+	pr *PullRequestURL,
+	client GitHubClientInterface) (*github.PullRequest, error) {
+
+	pullRequest, _, err := client.Get(ctx, pr.Owner, pr.Repo, pr.PRNumber)
+
+	if err != nil {
+
+		return nil, err
+	}
+
+	return pullRequest, nil
 }
 
 // ParseGitDiff takes a string representing a combined Git diff and a list of
@@ -219,6 +343,15 @@ func getDiffContents(diffURL string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
+	// Close the body
+	defer func(Body io.ReadCloser) {
+
+		if err := Body.Close(); err != nil {
+			log.Printf("Error closing response body: %v", err)
+		}
+
+	}(diffContents.Body)
 
 	if diffContents.StatusCode != http.StatusOK {
 		return "", errors.New("failed to get diff contents")

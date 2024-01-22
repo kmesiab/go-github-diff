@@ -7,7 +7,7 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
-	"slices"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -212,11 +212,12 @@ func ParseGitDiff(diff string, ignoreList []string) []*GitDiff {
 	for _, file := range files {
 
 		gitDiff, err := parseGitDiffFileString(file)
+
 		if err != nil {
 			continue
 		}
 
-		if slices.Contains(ignoreList, getFileExtension(gitDiff.FilePathNew)) {
+		if matchIgnoreFilter(gitDiff, ignoreList) {
 			continue
 		}
 
@@ -224,6 +225,45 @@ func ParseGitDiff(diff string, ignoreList []string) []*GitDiff {
 	}
 
 	return filteredList
+}
+
+func matchIgnoreFilter(file *GitDiff, ignoreList []string) bool {
+
+	for _, pattern := range ignoreList {
+		match, err := matchFile(pattern, file.FilePathNew)
+
+		if err != nil {
+			// consider finding a way to notify the caller
+			// an error has occurred.
+			return false
+		}
+
+		if match {
+
+			return true
+		}
+	}
+
+	return false
+}
+
+// matchFile takes a regex pattern and a file path and returns true if the
+// file path matches the pattern, and false otherwise. It returns an error
+// if the regex pattern is invalid.
+func matchFile(pattern, file string) (bool, error) {
+
+	if pattern == "" {
+
+		return false, nil
+	}
+
+	rx, err := regexp.Compile(pattern)
+
+	if err != nil {
+		return false, err
+	}
+
+	return rx.MatchString(file), nil
 }
 
 // splitDiffIntoFiles splits a single diff string into a slice of

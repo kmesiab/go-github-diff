@@ -305,3 +305,214 @@ func TestGetDiffContents(t *testing.T) {
 		})
 	}
 }
+
+func TestMatchIgnoreFilter_SinglePattern(t *testing.T) {
+	testCases := []struct {
+		name            string
+		gitDiff         *GitDiff
+		ignorePattern   string
+		shouldBeIgnored bool
+	}{
+		{
+			name:            "Ignore node_modules directory",
+			gitDiff:         &GitDiff{FilePathNew: "node_modules/package.json"},
+			ignorePattern:   `node_modules\/.*`,
+			shouldBeIgnored: true,
+		},
+		{
+			name:            "Ignore .env files",
+			gitDiff:         &GitDiff{FilePathNew: ".env.local"},
+			ignorePattern:   `.*\.env`,
+			shouldBeIgnored: true,
+		},
+		{
+			name:            "Ignore temporary files",
+			gitDiff:         &GitDiff{FilePathNew: "temp/file.tmp"},
+			ignorePattern:   `.*\.tmp`,
+			shouldBeIgnored: true,
+		},
+		{
+			name:            "Ignore binary files",
+			gitDiff:         &GitDiff{FilePathNew: "bin/executable"},
+			ignorePattern:   `bin\/.*`,
+			shouldBeIgnored: true,
+		},
+		{
+			name:            "Ignore source files",
+			gitDiff:         &GitDiff{FilePathNew: "src/main.go"},
+			ignorePattern:   `src\/.*`,
+			shouldBeIgnored: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ignoreList := []string{tc.ignorePattern}
+			if matchIgnoreFilter(tc.gitDiff, ignoreList) != tc.shouldBeIgnored {
+				t.Errorf("matchIgnoreFilter() for %s returned incorrect result, got: %t, want: %t", tc.name, !tc.shouldBeIgnored, tc.shouldBeIgnored)
+			}
+		})
+	}
+}
+
+func TestMatchIgnoreFilter_NonMatchingPattern(t *testing.T) {
+	gitDiff := &GitDiff{FilePathNew: "src/main.go"}
+
+	ignoreList := []string{
+		`node_modules\/.*`, // Regex pattern to ignore node_modules directory
+		`.*\.env`,          // Regex pattern to ignore .env files
+		`.*\.tmp`,          // Regex pattern to ignore temporary files
+		`bin\/.*`,          // Regex pattern to ignore binary files in bin directory
+	}
+
+	if matchIgnoreFilter(gitDiff, ignoreList) {
+		t.Errorf("matchIgnoreFilter() incorrectly ignored file %s, but it should not have", gitDiff.FilePathNew)
+	}
+}
+
+func TestMatchIgnoreFilter_EmptyIgnoreList(t *testing.T) {
+	gitDiff := &GitDiff{FilePathNew: "src/main.go"}
+
+	ignoreList := []string{} // Empty ignore list
+
+	if matchIgnoreFilter(gitDiff, ignoreList) {
+		t.Errorf("matchIgnoreFilter() incorrectly ignored file %s with an empty ignore list", gitDiff.FilePathNew)
+	}
+}
+
+func TestMatchIgnoreFilter_InvalidRegexPattern(t *testing.T) {
+	gitDiff := &GitDiff{FilePathNew: "src/main.go"}
+
+	ignoreList := []string{
+		"[invalid-regex", // An intentionally invalid regex pattern
+	}
+
+	if matchIgnoreFilter(gitDiff, ignoreList) {
+		t.Errorf(
+			"matchIgnoreFilter() incorrectly ignored file %s with an invalid regex pattern",
+			gitDiff.FilePathNew,
+		)
+	}
+}
+
+func TestMatchFile_MatchingPattern(t *testing.T) {
+	filePath := "src/main.go"
+	pattern := `src\/.*\.go` // Regex pattern to match Go files in the src directory
+
+	match, err := matchFile(pattern, filePath)
+	if err != nil {
+		t.Errorf("matchFile() returned an error: %v", err)
+	}
+
+	if !match {
+		t.Errorf("matchFile() did not match file %s with pattern %s, but it should have", filePath, pattern)
+	}
+}
+
+func TestMatchFile_NonMatchingPattern(t *testing.T) {
+	filePath := "images/photo.jpg"
+	pattern := `src\/.*\.go` // Regex pattern to match Go files in the src directory
+
+	match, err := matchFile(pattern, filePath)
+	if err != nil {
+		t.Errorf("matchFile() returned an error: %v", err)
+	}
+
+	if match {
+		t.Errorf("matchFile() incorrectly matched file %s with pattern %s", filePath, pattern)
+	}
+}
+
+func TestMatchFile_InvalidRegexPattern(t *testing.T) {
+	filePath := "src/main.go"
+	pattern := `[invalid-regex` // An intentionally invalid regex pattern
+
+	_, err := matchFile(pattern, filePath)
+	if err == nil {
+		t.Errorf("matchFile() did not return an error for invalid pattern %s", pattern)
+	}
+}
+
+func TestMatchFile_EmptyFilePath(t *testing.T) {
+	filePath := ""
+	pattern := `src\/.*\.go`
+
+	match, err := matchFile(pattern, filePath)
+	if err != nil {
+		t.Errorf("matchFile() returned an error: %v", err)
+	}
+
+	if match {
+		t.Errorf("matchFile() incorrectly matched an empty file path with pattern %s", pattern)
+	}
+}
+
+func TestMatchFile_EmptyPattern(t *testing.T) {
+	filePath := "src/main.go"
+	pattern := ""
+
+	match, err := matchFile(pattern, filePath)
+	if err != nil {
+		t.Errorf("matchFile() returned an error: %v", err)
+	}
+
+	if match {
+		t.Errorf("matchFile() incorrectly matched file %s with an empty pattern", filePath)
+	}
+}
+
+func TestMatchFile_ComplexPattern(t *testing.T) {
+	filePath := "src/main_test.go"
+	pattern := `src\/[a-z]+_test\.go` // Regex pattern for test files in the src directory
+
+	match, err := matchFile(pattern, filePath)
+	if err != nil {
+		t.Errorf("matchFile() returned an error: %v", err)
+	}
+
+	if !match {
+		t.Errorf("matchFile() failed to match file %s with complex pattern %s", filePath, pattern)
+	}
+}
+
+func TestMatchFile_SpecialCharactersInFilePath(t *testing.T) {
+	filePath := "src/[special]file.go"
+	pattern := `src\/\[special\]file\.go`
+
+	match, err := matchFile(pattern, filePath)
+	if err != nil {
+		t.Errorf("matchFile() returned an error: %v", err)
+	}
+
+	if !match {
+		t.Errorf("matchFile() failed to match file %s with pattern %s containing special characters", filePath, pattern)
+	}
+}
+
+func TestMatchFile_CaseInsensitivePattern(t *testing.T) {
+	filePath := "src/Main.go"
+	pattern := `(?i)src\/main\.go` // Case insensitive pattern
+
+	match, err := matchFile(pattern, filePath)
+	if err != nil {
+		t.Errorf("matchFile() returned an error: %v", err)
+	}
+
+	if !match {
+		t.Errorf("matchFile() failed to match file %s with case insensitive pattern %s", filePath, pattern)
+	}
+}
+
+func TestMatchFile_MetaCharactersInPattern(t *testing.T) {
+	filePath := "src/functions.go"
+	pattern := `src\/.*\.go` // Pattern using regex meta characters
+
+	match, err := matchFile(pattern, filePath)
+	if err != nil {
+		t.Errorf("matchFile() returned an error: %v", err)
+	}
+
+	if !match {
+		t.Errorf("matchFile() failed to match file %s with pattern %s using meta characters", filePath, pattern)
+	}
+}

@@ -15,6 +15,8 @@ diffs associated with pull requests.
 - Retrieve the contents of a Pull Request's Git diff from GitHub.
 - Parse combined Git diffs into individual file diffs.
 - Filter out file diffs based on a list of ignored file extensions.
+- Comprehensive regex-based file path matching for filtering file diffs.
+- Robust and extensive unit testing to ensure reliability and functionality.
 
 ## Installation
 

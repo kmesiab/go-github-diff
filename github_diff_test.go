@@ -1,12 +1,15 @@
 package github
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"testing"
+	"time"
 
+	"github.com/google/go-github/v57/github"
 	"github.com/stretchr/testify/require"
 )
 
@@ -515,4 +518,143 @@ func TestMatchFile_MetaCharactersInPattern(t *testing.T) {
 	if !match {
 		t.Errorf("matchFile() failed to match file %s with pattern %s using meta characters", filePath, pattern)
 	}
+}
+
+func TestGetPullRequestWithDetails_Success(t *testing.T) {
+	// Mock GitHub API response
+	mockClient := &MockGitClient{
+		MockGet: func(ctx context.Context, owner, repo string, number int) (*github.PullRequest, *github.Response, error) {
+			pr := &github.PullRequest{
+				Number: github.Int(number),
+				Title:  github.String("PR Title"),
+			}
+
+			githubResponse := &github.Response{
+				Response: &http.Response{
+					StatusCode: http.StatusOK,
+				},
+			}
+
+			return pr, githubResponse, nil
+		},
+	}
+
+	prURL := &PullRequestURL{Owner: "user", Repo: "repo", PRNumber: 123}
+	prDetails, err := GetPullRequestWithDetails(context.Background(), prURL, mockClient)
+
+	require.NoError(t, err)
+	require.NotNil(t, prDetails)
+	require.Equal(t, 123, *prDetails.Number)
+	require.Equal(t, "PR Title", *prDetails.Title)
+}
+
+func TestGetPullRequestWithDetails_NotFound(t *testing.T) {
+	// Mock GitHub API response for 404 Not Found
+	mockClient := &MockGitClient{
+		MockGet: func(ctx context.Context, owner, repo string, number int) (*github.PullRequest, *github.Response, error) {
+			// Simulate a 404 Not Found response
+			githubResponse := &github.Response{
+				Response: &http.Response{
+					StatusCode: http.StatusNotFound,
+				},
+			}
+
+			// Return nil for the pull request and the simulated response
+			return nil, githubResponse, errors.New("pull request not found")
+		},
+	}
+
+	prURL := &PullRequestURL{Owner: "user", Repo: "repo", PRNumber: 123}
+	prDetails, err := GetPullRequestWithDetails(context.Background(), prURL, mockClient)
+
+	// Check that an error was returned and prDetails is nil
+	require.Error(t, err)
+	require.Nil(t, prDetails)
+	require.Contains(t, err.Error(), "pull request not found")
+}
+
+func TestGetPullRequestWithDetails_APIError(t *testing.T) {
+	// Mock GitHub API response for a general API error (e.g., 500 Internal Server Error)
+	mockClient := &MockGitClient{
+		MockGet: func(ctx context.Context, owner, repo string, number int) (*github.PullRequest, *github.Response, error) {
+			// Simulate a 500 Internal Server Error response
+			githubResponse := &github.Response{
+				Response: &http.Response{
+					StatusCode: http.StatusInternalServerError,
+				},
+			}
+
+			// Return nil for the pull request and an error indicating a server issue
+			return nil, githubResponse, errors.New("internal server error")
+		},
+	}
+
+	prURL := &PullRequestURL{Owner: "user", Repo: "repo", PRNumber: 123}
+	prDetails, err := GetPullRequestWithDetails(context.Background(), prURL, mockClient)
+
+	// Check that an error was returned and prDetails is nil
+	require.Error(t, err)
+	require.Nil(t, prDetails)
+	require.Contains(t, err.Error(), "internal server error")
+}
+
+func TestGetPullRequestWithDetails_RateLimitExceeded(t *testing.T) {
+	// Mock GitHub API response for rate limit exceeded
+	mockClient := &MockGitClient{
+		MockGet: func(ctx context.Context, owner, repo string, number int) (*github.PullRequest, *github.Response, error) {
+			// Simulate a 403 Forbidden response for rate limiting
+			githubResponse := &github.Response{
+				Response: &http.Response{
+					StatusCode: http.StatusForbidden,
+				},
+				Rate: github.Rate{
+					Limit:     5000,
+					Remaining: 0,                                                     // No remaining requests
+					Reset:     github.Timestamp{Time: time.Now().Add(1 * time.Hour)}, // Reset time in the future
+				},
+			}
+
+			return nil, githubResponse, errors.New("API rate limit exceeded")
+		},
+	}
+
+	prURL := &PullRequestURL{Owner: "user", Repo: "repo", PRNumber: 123}
+	prDetails, err := GetPullRequestWithDetails(context.Background(), prURL, mockClient)
+
+	// Check that an error was returned and prDetails is nil
+	require.Error(t, err)
+	require.Nil(t, prDetails)
+	require.Contains(t, err.Error(), "API rate limit exceeded")
+}
+
+func TestGetPullRequestWithClient_APIError(t *testing.T) {
+	mockClient := &MockGitClient{
+		MockGet: func(
+			ctx context.Context,
+			owner, repo string,
+			number int,
+		) (*github.PullRequest, *github.Response, error) {
+
+			return nil, nil, errors.New("API error")
+		},
+	}
+
+	prURL := &PullRequestURL{Owner: "user", Repo: "repo", PRNumber: 123}
+	diff, err := GetPullRequestWithClient(context.Background(), prURL, mockClient)
+
+	require.Error(t, err)
+	require.Empty(t, diff)
+	require.Contains(t, err.Error(), "API error")
+}
+
+func TestGetPullRequestWithClient_InvalidURL(t *testing.T) {
+	mockClient := &MockGitClient{
+		MockGet: func(ctx context.Context, owner, repo string, number int) (*github.PullRequest, *github.Response, error) {
+			return nil, nil, errors.New("invalid URL")
+		},
+	}
+	prURL := &PullRequestURL{Owner: "", Repo: "", PRNumber: 0}
+	diff, err := GetPullRequestWithClient(context.Background(), prURL, mockClient)
+	require.Error(t, err)
+	require.Empty(t, diff)
 }

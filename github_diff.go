@@ -134,51 +134,6 @@ func GetPullRequest(ctx context.Context, pr *PullRequestURL, client *github.Clie
 	return getDiffContents(pullRequest.GetDiffURL())
 }
 
-// getDiffContents retrieves the contents of a Git diff from a specified URL. The function
-// makes an HTTP GET request to the provided diffURL and returns the content as a string.
-// This function is designed to work with URLs pointing to raw diff data, typically used
-// in the context of GitHub or similar version control systems.
-//
-// Parameters:
-//   - diffURL: A string representing the URL from which the Git diff contents are to be retrieved.
-//
-// Returns:
-//   - A string containing the contents of the Git diff.
-//   - An error if the HTTP request fails, or if reading the response body fails.
-//
-// The function handles HTTP errors and read errors by returning an empty string and the
-// respective error. It ensures that the body of the HTTP response is read completely into
-// a byte slice, which is then converted into a string.
-//
-// Example:
-//
-//	diff, err := getDiffContents("https://github.com/user/repo/pull/123.diff")
-//	if err != nil {
-//	  // Handle error
-//	}
-//	// Use diff as a string containing the Git diff
-//
-// This function is useful in scenarios where an application needs to process or analyze
-// the contents of a Git diff, such as in automated code review tools, continuous integration
-// systems, or other applications that interact with version control systems.
-func getDiffContents(diffURL string) (string, error) {
-	diffContents, err := http.Get(diffURL)
-	if err != nil {
-		return "", err
-	}
-
-	bodyBytes, err := io.ReadAll(diffContents.Body)
-	if err != nil {
-		return "", err
-	}
-
-	if diffContents.StatusCode != http.StatusOK {
-		return "", errors.New("failed to get diff contents")
-	}
-
-	return string(bodyBytes), nil
-}
-
 // ParseGitDiff takes a string representing a combined Git diff and a list of
 // file extensions to ignore. It returns a slice of GitDiff structs, each representing
 // a parsed file diff. The function performs the following steps:
@@ -225,6 +180,51 @@ func ParseGitDiff(diff string, ignoreList []string) []*GitDiff {
 	}
 
 	return filteredList
+}
+
+// getDiffContents retrieves the contents of a Git diff from a specified URL. The function
+// makes an HTTP GET request to the provided diffURL and returns the content as a string.
+// This function is designed to work with URLs pointing to raw diff data, typically used
+// in the context of GitHub or similar version control systems.
+//
+// Parameters:
+//   - diffURL: A string representing the URL from which the Git diff contents are to be retrieved.
+//
+// Returns:
+//   - A string containing the contents of the Git diff.
+//   - An error if the HTTP request fails, or if reading the response body fails.
+//
+// The function handles HTTP errors and read errors by returning an empty string and the
+// respective error. It ensures that the body of the HTTP response is read completely into
+// a byte slice, which is then converted into a string.
+//
+// Example:
+//
+//	diff, err := getDiffContents("https://github.com/user/repo/pull/123.diff")
+//	if err != nil {
+//	  // Handle error
+//	}
+//	// Use diff as a string containing the Git diff
+//
+// This function is useful in scenarios where an application needs to process or analyze
+// the contents of a Git diff, such as in automated code review tools, continuous integration
+// systems, or other applications that interact with version control systems.
+func getDiffContents(diffURL string) (string, error) {
+	diffContents, err := http.Get(diffURL)
+	if err != nil {
+		return "", err
+	}
+
+	bodyBytes, err := io.ReadAll(diffContents.Body)
+	if err != nil {
+		return "", err
+	}
+
+	if diffContents.StatusCode != http.StatusOK {
+		return "", errors.New("failed to get diff contents")
+	}
+
+	return string(bodyBytes), nil
 }
 
 func matchIgnoreFilter(file *GitDiff, ignoreList []string) bool {
